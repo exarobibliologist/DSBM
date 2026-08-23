@@ -209,7 +209,9 @@ First, install a browser extension such as:
 
 ### Add the Script
 
-Click *(INSERT LINK HERE)* or manually create a new userscript in your manager and paste the contents of `DSBM.user.js`.
+Click *(https://github.com/exarobibliologist/DSBM/blob/main/DSBM.user.js)* then click the "Raw" button in the upper-right hand corner of the script pane...
+
+or manually create a new userscript in your userscript manager and paste the contents of `DSBM.user.js`.
 
 ### Save and Enable
 
