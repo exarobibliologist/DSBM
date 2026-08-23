@@ -2,7 +2,7 @@
 // @name            DeviantArt Super Badge Manager
 // @namespace       https://www.deviantart.com/
 // @description     Unified, throttled manager for mass-sending Llamas and Cakes.
-// @version         1.0.8
+// @version         1.0.9
 // @match           *://*.deviantart.com/*
 // @grant           GM_getValue
 // @grant           GM_setValue
@@ -55,8 +55,16 @@
     function injectStyles() {
         const style = document.createElement('style');
         style.textContent = `
-            .super-badge-widget { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
-            span.s-badge { display: inline-block; pointer-events: all; image-rendering: pixelated; width: 18px; height: 18px; vertical-align: middle; cursor: default; transition: .3s all; }
+            .super-badge-widget { 
+                display: inline-flex; 
+                align-items: center; 
+                gap: 4px; 
+                margin-left: 6px; 
+                height: 1em; /* Match text height to prevent gallery cutoff */
+                vertical-align: middle; 
+                flex-shrink: 0; /* Prevent icons from squishing */
+            }
+            span.s-badge { display: inline-block; pointer-events: all; image-rendering: pixelated; width: 18px; height: 18px; cursor: default; transition: .3s all; }
             
             /* Llama Isolated States (already and success now use the exact same image to remain permanently visible) */
             span.s-llama-give { background: url(${IMG.GIVE_LLAMA}) center no-repeat; cursor: pointer; }
