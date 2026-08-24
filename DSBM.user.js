@@ -2,7 +2,7 @@
 // @name            DeviantArt Super Badge Manager
 // @namespace       https://www.deviantart.com/
 // @description     Unified, throttled manager for mass-sending Llamas and Cakes.
-// @version         1.0.9
+// @version         1.1.1
 // @match           *://*.deviantart.com/*
 // @grant           GM_getValue
 // @grant           GM_setValue
@@ -19,13 +19,13 @@
     let csrfTokenCacheTime = 0;
     
     const memoryCache = new Map();
-    const sessionCakesGiven = new Set(); // Tracks cakes given only during this specific page session
+    const sessionCakesGiven = new Set();
     
     const CACHE_EXPIRY = 30 * 24 * 60 * 60 * 1000;
     const CSRF_CACHE_DURATION = 30 * 60 * 1000;
     const BATCH_LIMIT = 50;
 
-    let stats = { pending: 0, sent: 0, spam: 0, error: 0 };
+    let stats = { llamaPending: 0, llamaSent: 0, cakePending: 0, cakeSent: 0, spam: 0, error: 0 };
 
     // --- BASE64 ASSETS ---
     const IMG = {
@@ -55,18 +55,10 @@
     function injectStyles() {
         const style = document.createElement('style');
         style.textContent = `
-            .super-badge-widget { 
-                display: inline-flex; 
-                align-items: center; 
-                gap: 4px; 
-                margin-left: 6px; 
-                height: 1em; /* Match text height to prevent gallery cutoff */
-                vertical-align: middle; 
-                flex-shrink: 0; /* Prevent icons from squishing */
-            }
+            .super-badge-widget { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; height: 1em; vertical-align: middle; flex-shrink: 0; }
             span.s-badge { display: inline-block; pointer-events: all; image-rendering: pixelated; width: 18px; height: 18px; cursor: default; transition: .3s all; }
             
-            /* Llama Isolated States (already and success now use the exact same image to remain permanently visible) */
+            /* Llama Isolated States */
             span.s-llama-give { background: url(${IMG.GIVE_LLAMA}) center no-repeat; cursor: pointer; }
             span.s-llama-success, span.s-llama-already { background: url(${IMG.LLAMA_SUCCESS}) center no-repeat; width: 26px; margin: 0; }
             span.s-llama-enough { background: url(${IMG.LLAMA_ENOUGH}) center no-repeat; }
@@ -85,34 +77,50 @@
             
             /* Floating Panel */
             #super-badge-panel { position: fixed; bottom: 24px; right: 24px; background: #1e1e24; color: #e5e5e5; border: 1px solid #333; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); z-index: 99999; font-family: sans-serif; overflow: hidden; width: 50px; height: 50px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); display: flex; flex-direction: column; }
-            #super-badge-panel:hover { width: 320px; height: 180px; background: #25262c; }
+            #super-badge-panel:hover { width: 340px; height: 240px; background: #25262c; }
             #sbp-header { display: flex; align-items: center; padding: 10px; cursor: pointer; min-height: 50px; box-sizing: border-box; }
             #sbp-icon { width: 30px; height: 30px; fill: #00E5FF; flex-shrink: 0; }
             #sbp-title { font-weight: 600; font-size: 16px; margin-left: 12px; white-space: nowrap; opacity: 0; transition: opacity 0.2s; }
             #super-badge-panel:hover #sbp-title { opacity: 1; }
+            
             #sbp-content { padding: 0 16px 16px 16px; opacity: 0; transition: opacity 0.2s; display: flex; flex-direction: column; gap: 10px; }
             #super-badge-panel:hover #sbp-content { opacity: 1; transition-delay: 0.1s; }
+            
+            /* Toggles */
+            .sbp-toggles { display: flex; justify-content: space-around; background: #17181c; padding: 6px; border-radius: 6px; font-size: 13px; font-weight: bold;}
+            .sbp-toggles label { cursor: pointer; display: flex; align-items: center; gap: 4px; color: #00E5FF; }
+            .sbp-toggles input[type="radio"] { cursor: pointer; accent-color: #00E5FF; }
+
+            /* Stats Grid */
             .sbp-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; background: #17181c; padding: 10px; border-radius: 8px; }
             .sbp-stat-grid div { display: flex; justify-content: space-between; }
             .sbp-stat-val { font-weight: bold; color: #00E5FF; }
-            #sbp-action-btn { background: #00E5FF; color: #000; border: none; padding: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+            
+            #sbp-action-btn { background: #00E5FF; color: #000; border: none; padding: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 2px;}
             #sbp-action-btn:hover { background: #00b3cc; }
         `;
         document.head.appendChild(style);
     }
 
     // --- PANEL STATS UPDATER ---
-    function updatePanelStats(type, count = 1) {
-        if (type === 'reset') {
-            stats = { pending: requestQueue.length, sent: 0, spam: 0, error: 0 };
-        } else if (type === 'pending') {
-            stats.pending = requestQueue.length;
-        } else if (stats[type] !== undefined) {
-            stats[type] += count;
+    function updatePanelStats(action, reqType = null, count = 1) {
+        if (action === 'reset' || action === 'pending') {
+            if (action === 'reset') {
+                stats = { llamaPending: 0, llamaSent: 0, cakePending: 0, cakeSent: 0, spam: 0, error: 0 };
+            }
+            stats.llamaPending = requestQueue.filter(req => req.type === 'llama').length;
+            stats.cakePending = requestQueue.filter(req => req.type === 'cake').length;
+        } else if (action === 'sent' && reqType) {
+            if (reqType === 'llama') stats.llamaSent += count;
+            if (reqType === 'cake') stats.cakeSent += count;
+        } else if (stats[action] !== undefined) {
+            stats[action] += count;
         }
 
-        document.getElementById('sbp-stat-pending').textContent = stats.pending;
-        document.getElementById('sbp-stat-sent').textContent = stats.sent;
+        document.getElementById('sbp-stat-llama-pending').textContent = stats.llamaPending;
+        document.getElementById('sbp-stat-llama-sent').textContent = stats.llamaSent;
+        document.getElementById('sbp-stat-cake-pending').textContent = stats.cakePending;
+        document.getElementById('sbp-stat-cake-sent').textContent = stats.cakeSent;
         document.getElementById('sbp-stat-spam').textContent = stats.spam;
         document.getElementById('sbp-stat-error').textContent = stats.error;
     }
@@ -131,9 +139,16 @@
                 <div id="sbp-title">Super Badge Queue</div>
             </div>
             <div id="sbp-content">
+                <div class="sbp-toggles">
+                    <label><input type="radio" name="sbp-mode" value="llama"> Llamas</label>
+                    <label><input type="radio" name="sbp-mode" value="cake"> Cake</label>
+                    <label><input type="radio" name="sbp-mode" value="all" checked> All</label>
+                </div>
                 <div class="sbp-stat-grid">
-                    <div><span>Pending:</span> <span id="sbp-stat-pending" class="sbp-stat-val">0</span></div>
-                    <div><span>Sent:</span> <span id="sbp-stat-sent" class="sbp-stat-val">0</span></div>
+                    <div><span>Llamas Pending:</span> <span id="sbp-stat-llama-pending" class="sbp-stat-val">0</span></div>
+                    <div><span>Llamas Sent:</span> <span id="sbp-stat-llama-sent" class="sbp-stat-val">0</span></div>
+                    <div><span>Cake Pending:</span> <span id="sbp-stat-cake-pending" class="sbp-stat-val">0</span></div>
+                    <div><span>Cake Sent:</span> <span id="sbp-stat-cake-sent" class="sbp-stat-val">0</span></div>
                     <div><span>Spam Hits:</span> <span id="sbp-stat-spam" class="sbp-stat-val">0</span></div>
                     <div><span>Errors:</span> <span id="sbp-stat-error" class="sbp-stat-val">0</span></div>
                 </div>
@@ -150,7 +165,6 @@
         const devNameReg = btn.dataset.devnamereg;
         const type = btn.dataset.type;
         
-        // Prevent manual spam for cakes already given this session
         if (type === 'cake' && sessionCakesGiven.has(devName)) return;
 
         if (btn.className.includes('-give') || btn.className.includes('-error') || btn.className.includes('-spam')) {
@@ -214,11 +228,10 @@
             }
         }
         
-        // Clone object to inject session state without mutating local storage
         if (cached) {
             const returnData = { ...cached };
             if (sessionCakesGiven.has(devName) && returnData.cake === 'give') {
-                returnData.cake = 'already'; // Spoof UI for this page lifecycle
+                returnData.cake = 'already'; 
             }
             return returnData;
         }
@@ -294,34 +307,37 @@
     function populateAndStartQueue() {
         if (isProcessingQueue) return;
 
-        const availableLlamas = document.querySelectorAll('span.s-llama-give');
-        const availableCakes = document.querySelectorAll('span.s-cake-give');
-        
+        const mode = document.querySelector('input[name="sbp-mode"]:checked').value;
         const uniqueLlamas = new Set();
         const uniqueCakes = new Set();
 
-        for (let i = 0; i < availableLlamas.length; i++) {
-            const devName = availableLlamas[i].dataset.devname;
-            if (!uniqueLlamas.has(devName)) {
-                uniqueLlamas.add(devName);
-                requestQueue.push({ 
-                    devName: devName, 
-                    devNameReg: availableLlamas[i].dataset.devnamereg, 
-                    type: 'llama' 
-                });
+        if (mode === 'llama' || mode === 'all') {
+            const availableLlamas = document.querySelectorAll('span.s-llama-give');
+            for (let i = 0; i < availableLlamas.length; i++) {
+                const devName = availableLlamas[i].dataset.devname;
+                if (!uniqueLlamas.has(devName)) {
+                    uniqueLlamas.add(devName);
+                    requestQueue.push({ 
+                        devName: devName, 
+                        devNameReg: availableLlamas[i].dataset.devnamereg, 
+                        type: 'llama' 
+                    });
+                }
             }
         }
         
-        for (let j = 0; j < availableCakes.length; j++) {
-            const devName = availableCakes[j].dataset.devname;
-            // Prevent queuing if cake was already sent this session
-            if (!uniqueCakes.has(devName) && !sessionCakesGiven.has(devName)) {
-                uniqueCakes.add(devName);
-                requestQueue.push({ 
-                    devName: devName, 
-                    devNameReg: availableCakes[j].dataset.devnamereg, 
-                    type: 'cake' 
-                });
+        if (mode === 'cake' || mode === 'all') {
+            const availableCakes = document.querySelectorAll('span.s-cake-give');
+            for (let j = 0; j < availableCakes.length; j++) {
+                const devName = availableCakes[j].dataset.devname;
+                if (!uniqueCakes.has(devName) && !sessionCakesGiven.has(devName)) {
+                    uniqueCakes.add(devName);
+                    requestQueue.push({ 
+                        devName: devName, 
+                        devNameReg: availableCakes[j].dataset.devnamereg, 
+                        type: 'cake' 
+                    });
+                }
             }
         }
 
@@ -337,7 +353,6 @@
             updatePanelStats('pending');
             const req = requestQueue[i];
             
-            // UI Feedback
             const targetBtns = document.querySelectorAll(`span.s-badge[data-devname="${req.devName}"][data-type="${req.type}"]`);
             targetBtns.forEach(btn => btn.style.opacity = '0.5');
 
@@ -346,7 +361,6 @@
 
             const result = await sendUnifiedBadge(token, req.devNameReg, req.type);
 
-            // Harden error checks for silently rejected requests
             if (result.error || result.status === 'error' || result.errorDescription) {
                 const errText = (result.errorDescription || result.error || 'error').toString().toLowerCase();
                 const spamKws = ['quickly', 'whoa there', 'spam filter', 'too fast'];
@@ -355,15 +369,14 @@
                     updatePanelStats('spam');
                     targetBtns.forEach(btn => btn.className = `s-badge s-badge-spam`);
                     await delay(60000); 
-                    i--; // Retry this payload
+                    i--; 
                     continue; 
                 } else if (errText.includes('cannot give badge') || errText.includes('already')) {
-                    // Fallback: DA silently rejected because they already have one mid-queue.
-                    updatePanelStats('sent');
+                    updatePanelStats('sent', req.type);
                     const currentCache = getCachedStatus(req.devName) || { llama: 'give', cake: 'give' };
                     
                     if (req.type === 'llama') currentCache.llama = 'already';
-                    if (req.type === 'cake') currentCache.cake = 'enough'; // Set permanently to max limit reached
+                    if (req.type === 'cake') currentCache.cake = 'enough'; 
                     
                     saveCachedStatus(req.devName, currentCache.llama, currentCache.cake);
                     updateWidgetUI(req.devName, currentCache.llama, currentCache.cake);
@@ -372,31 +385,26 @@
                     targetBtns.forEach(btn => btn.className = `s-badge s-${req.type}-error`);
                 }
             } else {
-                updatePanelStats('sent');
+                updatePanelStats('sent', req.type);
                 
                 const currentCache = getCachedStatus(req.devName) || { llama: 'give', cake: 'give' };
                 
                 if (req.type === 'llama') {
                     currentCache.llama = 'already'; 
-                    // Write to local storage since Llamas are a 1-time limit ever
                     saveCachedStatus(req.devName, currentCache.llama, currentCache.cake);
                 } else if (req.type === 'cake') {
-                    // Temporarily block cakes for this user for the current page session
                     sessionCakesGiven.add(req.devName);
-                    // Do NOT save Cake status to localStorage here. Spoof UI strictly via memory update.
                     currentCache.cake = 'already'; 
                 }
 
-                // Sync all widgets visually across the entire page
                 updateWidgetUI(req.devName, currentCache.llama, currentCache.cake);
                 
-                // Ensure opacity is restored from the pending feedback state
                 const resetBtns = document.querySelectorAll(`span.s-badge[data-devname="${req.devName}"][data-type="${req.type}"]`);
                 resetBtns.forEach(btn => btn.style.opacity = '1');
             }
 
-            requestQueue.shift(); // Remove completed
-            i--; // Adjust index since we mutated the array
+            requestQueue.shift();
+            i--; 
             await randomDelay(2500, 4000);
         }
 
@@ -427,7 +435,6 @@
                     };
                     saveCachedStatus(devName, status.llama, status.cake);
                     
-                    // Force UI to reflect session cake status if it somehow fired concurrently
                     let displayCake = status.cake;
                     if (sessionCakesGiven.has(devName) && displayCake === 'give') {
                         displayCake = 'already';
