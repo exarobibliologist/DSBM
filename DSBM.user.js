@@ -132,9 +132,8 @@
         panel.innerHTML = `
             <div id="sbp-header">
                 <svg id="sbp-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2C7.5 2 4 5.5 4 10c0 1.5.4 2.9 1 4.1v5.4c0 .8.7 1.5 1.5 1.5h1.2c.7 0 1.3-.5 1.5-1.2L10 17h4l.8 2.8c.2.7.8 1.2 1.5 1.2h1.2c.8 0 1.5-.7 1.5-1.5v-5.4c.6-1.2 1-2.6 1-4.1 0-4.5-3.5-8-8-8zm-3 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm6 0c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
-                    <path d="M9 9.5m-1 0a1 1 0 1 0 2 0 1 1 0 1 0 -2 0"/>
-                    <path d="M15 9.5m-1 0a1 1 0 1 0 2 0 1 1 0 1 0 -2 0"/>
+                    <path d="M15,3V9l-3,2L9,9V3ZM8,3h8" style="fill: none; stroke: #e5e5e5; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2;"></path>
+                    <polygon points="12 11 10.26 14.29 6.38 14.82 9.19 17.38 8.52 21 12 19.29 15.48 21 14.81 17.38 17.63 14.82 13.74 14.29 12 11" style="fill: none; stroke: #00E5FF; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2;"></polygon>
                 </svg>
                 <div id="sbp-title">Super Badge Queue</div>
             </div>
