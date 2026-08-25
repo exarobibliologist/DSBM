@@ -2,7 +2,7 @@
 // @name            DeviantArt Super Badge Manager
 // @namespace       https://www.deviantart.com/
 // @description     Unified, throttled manager for mass-sending Llamas and Cakes.
-// @version         1.1.1
+// @version         1.1.5
 // @match           *://*.deviantart.com/*
 // @grant           GM_getValue
 // @grant           GM_setValue
@@ -461,14 +461,51 @@
             const devNameReg = link.getAttribute('data-username');
             const devName = devNameReg?.toLowerCase();
             
-            if (!devName || devName === loggedInUser || processedNames.has(devName) || link.getAttribute('data-super-widget-found')) continue;
+            if (!devName || devName === loggedInUser || link.getAttribute('data-super-widget-found')) continue;
             
-            processedNames.add(devName);
+            // --- DEDUPLICATION LOGIC ---
+            // Determine if this is an avatar link (no text)
+            const hasText = link.textContent.trim().length > 0;
+            
+            if (!hasText) {
+                let container = link.parentElement;
+                let siblingTextLinkFound = false;
+                
+                // Scan up to 4 levels up the DOM to find the parent comment block
+                for (let j = 0; j < 4 && container; j++) {
+                    const siblingLinks = container.querySelectorAll(`a[data-username="${devNameReg}"]`);
+                    for (let k = 0; k < siblingLinks.length; k++) {
+                        if (siblingLinks[k].textContent.trim().length > 0) {
+                            siblingTextLinkFound = true;
+                            break;
+                        }
+                    }
+                    if (siblingTextLinkFound) break;
+                    container = container.parentElement;
+                }
+                
+                // If a text-based username exists in the same block, skip this avatar
+                if (siblingTextLinkFound) {
+                    link.setAttribute('data-super-widget-found', '1');
+                    continue;
+                }
+            }
+            // ---------------------------
+
             link.setAttribute('data-super-widget-found', '1');
             
             const widget = createSuperWidget(devName, devNameReg);
             link.parentNode.insertBefore(widget, link.nextSibling);
             count++;
+
+            const cachedStatus = getCachedStatus(devName);
+            if (cachedStatus) {
+                // Apply cached styles instantly
+                updateWidgetUI(devName, cachedStatus.llama, cachedStatus.cake);
+            } else {
+                // Queue for API fetch
+                processedNames.add(devName);
+            }
         }
         
         if (processedNames.size > 0) {
